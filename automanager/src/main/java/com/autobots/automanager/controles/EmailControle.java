@@ -19,8 +19,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import com.autobots.automanager.autorizacao.Perfis;
 import com.autobots.automanager.entidades.Email;
 import com.autobots.automanager.entidades.Usuario;
 import com.autobots.automanager.modelos.AdicionadorLinkEmail;
@@ -42,6 +44,7 @@ public class EmailControle {
 				() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Email " + id + " não encontrado"));
 	}
 
+	@PreAuthorize("@acesso.podeLerEmail(#id)")
 	@GetMapping("/emails/{id}")
 	public ResponseEntity<Email> obterEmail(@PathVariable long id) {
 		Email email = buscar(id);
@@ -49,6 +52,7 @@ public class EmailControle {
 		return new ResponseEntity<>(email, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR)
 	@GetMapping("/emails")
 	public ResponseEntity<CollectionModel<Email>> obterEmails() {
 		List<Email> emails = repositorio.findAll();
@@ -59,6 +63,7 @@ public class EmailControle {
 	}
 
 	// A criação fica aninhada no dono porque Email só existe vinculado a ele
+	@PreAuthorize("@acesso.podeGerenciarUsuario(#usuarioId)")
 	@PostMapping("/usuarios/{usuarioId}/emails")
 	public ResponseEntity<Email> cadastrarEmail(@PathVariable long usuarioId, @Valid @RequestBody Email email) {
 		if (email.getId() != null) {
@@ -73,6 +78,7 @@ public class EmailControle {
 		return ResponseEntity.created(salvo.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(salvo);
 	}
 
+	@PreAuthorize("@acesso.podeGerenciarEmail(#id)")
 	@PutMapping("/emails/{id}")
 	public ResponseEntity<Email> atualizarEmail(@PathVariable long id, @RequestBody Email atualizacao) {
 		Email email = buscar(id);
@@ -82,6 +88,7 @@ public class EmailControle {
 		return new ResponseEntity<>(salvo, HttpStatus.OK);
 	}
 
+	@PreAuthorize("@acesso.podeGerenciarEmail(#id)")
 	@DeleteMapping("/emails/{id}")
 	public ResponseEntity<Void> excluirEmail(@PathVariable long id) {
 		Email email = buscar(id);

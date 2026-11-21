@@ -19,9 +19,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.autobots.automanager.autorizacao.Perfis;
 import com.autobots.automanager.entidades.Empresa;
 import com.autobots.automanager.entidades.Mercadoria;
 import com.autobots.automanager.modelos.AdicionadorLinkEmpresa;
@@ -43,6 +45,7 @@ public class EmpresaControle {
 				() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa " + id + " não encontrada"));
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/empresas/{id}")
 	public ResponseEntity<Empresa> obterEmpresa(@PathVariable long id) {
 		Empresa empresa = buscar(id);
@@ -50,6 +53,7 @@ public class EmpresaControle {
 		return new ResponseEntity<>(empresa, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/empresas")
 	public ResponseEntity<CollectionModel<Empresa>> obterEmpresas() {
 		List<Empresa> empresas = repositorio.findAll();
@@ -59,6 +63,7 @@ public class EmpresaControle {
 		return new ResponseEntity<>(colecao, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR)
 	@PostMapping("/empresas")
 	public ResponseEntity<Empresa> cadastrarEmpresa(@Valid @RequestBody Empresa empresa) {
 		if (empresa.getId() != null) {
@@ -71,6 +76,7 @@ public class EmpresaControle {
 	}
 
 	// Atualiza razão social e nome fantasia. Telefones, endereço e as coleções têm rotas próprias
+	@PreAuthorize(Perfis.ADMINISTRADOR)
 	@PutMapping("/empresas/{id}")
 	public ResponseEntity<Empresa> atualizarEmpresa(@PathVariable long id, @RequestBody Empresa atualizacao) {
 		Empresa empresa = buscar(id);
@@ -80,6 +86,7 @@ public class EmpresaControle {
 		return new ResponseEntity<>(salva, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR)
 	@DeleteMapping("/empresas/{id}")
 	public ResponseEntity<Void> excluirEmpresa(@PathVariable long id) {
 		Empresa empresa = buscar(id);

@@ -1,12 +1,20 @@
 package com.autobots.automanager.modelos;
 
+import org.springframework.security.crypto.password.PasswordEncoder;
+
 import com.autobots.automanager.entidades.Credencial;
 import com.autobots.automanager.entidades.CredencialCodigoBarra;
 import com.autobots.automanager.entidades.CredencialUsuarioSenha;
 
-// Quem chama garante que alvo e atualização são do mesmo tipo de credencial
+// Quem chama garante que alvo e atualização são do mesmo tipo de credencial. A senha nova é
+// gravada já codificada (BCrypt), como no cadastro
 public class CredencialAtualizador {
 	private StringVerificadorNulo verificador = new StringVerificadorNulo();
+	private PasswordEncoder codificador;
+
+	public CredencialAtualizador(PasswordEncoder codificador) {
+		this.codificador = codificador;
+	}
 
 	public void atualizar(Credencial alvo, Credencial atualizacao) {
 		if (atualizacao == null) {
@@ -22,7 +30,7 @@ public class CredencialAtualizador {
 				atual.setNomeUsuario(nova.getNomeUsuario());
 			}
 			if (!verificador.verificar(nova.getSenha())) {
-				atual.setSenha(nova.getSenha());
+				atual.setSenha(codificador.encode(nova.getSenha()));
 			}
 		}
 		if (alvo instanceof CredencialCodigoBarra && atualizacao instanceof CredencialCodigoBarra) {

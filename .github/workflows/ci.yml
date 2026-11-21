@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Um push novo na mesma branch cancela a execução anterior, que ficou obsoleta
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  testes:
+    name: Build e testes
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: automanager
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: JDK 17 (Temurin) com cache do Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: automanager/pom.xml
+
+      - name: Compilar e rodar os testes
+        run: ./mvnw -B -ntp verify
+
+      - name: Guardar os relatórios dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorios-testes
+          path: automanager/target/surefire-reports/
+          retention-days: 7
+
+  docker:
+    name: Imagem Docker e roteiro de verificação
+    needs: testes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Construir a imagem (sem publicar)
+        run: docker build -t automanager:ci automanager
+
+      # Segredo aleatório a cada execução: o container é descartado no fim do job
+      - name: Subir o container
+        run: |
+          docker run -d --name automanager -p 8080:8080 \
+            -e JWT_SECRET="$(openssl rand -base64 64 | tr -d '\n')" automanager:ci
+
+      - name: Esperar a API responder
+        run: |
+          for tentativa in $(seq 1 60); do
+            if curl -s -o /dev/null -X POST http://localhost:8080/login; then
+              echo "API no ar"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "A API não subiu em 2 minutos"
+          exit 1
+
+      - name: Rodar o roteiro de verificação contra o container
+        run: ./testes/roteiro.sh
+
+      - name: Logs do container
+        if: failure()
+        run: docker logs automanager

@@ -20,8 +20,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import com.autobots.automanager.autorizacao.Perfis;
 import com.autobots.automanager.entidades.Empresa;
 import com.autobots.automanager.entidades.Mercadoria;
 import com.autobots.automanager.entidades.Usuario;
@@ -56,6 +58,7 @@ public class MercadoriaControle {
 				() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa " + id + " não encontrada"));
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/mercadorias/{id}")
 	public ResponseEntity<Mercadoria> obterMercadoria(@PathVariable long id) {
 		Mercadoria mercadoria = buscar(id);
@@ -63,6 +66,7 @@ public class MercadoriaControle {
 		return new ResponseEntity<>(mercadoria, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/mercadorias")
 	public ResponseEntity<CollectionModel<Mercadoria>> obterMercadorias() {
 		List<Mercadoria> mercadorias = repositorio.findAll();
@@ -72,6 +76,7 @@ public class MercadoriaControle {
 		return new ResponseEntity<>(colecao, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/empresas/{empresaId}/mercadorias")
 	public ResponseEntity<CollectionModel<Mercadoria>> obterMercadoriasDaEmpresa(@PathVariable long empresaId) {
 		Empresa empresa = buscarEmpresa(empresaId);
@@ -83,6 +88,7 @@ public class MercadoriaControle {
 	}
 
 	// Entra no catálogo da empresa
+	@PreAuthorize(Perfis.ADMINISTRADOR_GERENTE)
 	@PostMapping("/empresas/{empresaId}/mercadorias")
 	public ResponseEntity<Mercadoria> cadastrarMercadoria(@PathVariable long empresaId, @Valid @RequestBody Mercadoria mercadoria) {
 		if (mercadoria.getId() != null) {
@@ -97,6 +103,7 @@ public class MercadoriaControle {
 		return ResponseEntity.created(salvo.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(salvo);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR_GERENTE)
 	@PutMapping("/mercadorias/{id}")
 	public ResponseEntity<Mercadoria> atualizarMercadoria(@PathVariable long id, @RequestBody Mercadoria atualizacao) {
 		Mercadoria mercadoria = buscar(id);
@@ -106,6 +113,7 @@ public class MercadoriaControle {
 		return new ResponseEntity<>(salvo, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR_GERENTE)
 	@DeleteMapping("/mercadorias/{id}")
 	public ResponseEntity<Void> excluirMercadoria(@PathVariable long id) {
 		Mercadoria mercadoria = buscar(id);
@@ -128,6 +136,7 @@ public class MercadoriaControle {
 		return new ResponseEntity<>(HttpStatus.NO_CONTENT);
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/usuarios/{usuarioId}/mercadorias")
 	public ResponseEntity<CollectionModel<Mercadoria>> obterMercadoriasDoFornecedor(@PathVariable long usuarioId) {
 		Usuario fornecedor = buscarUsuario(usuarioId);
@@ -139,6 +148,7 @@ public class MercadoriaControle {
 	}
 
 	// Registra o usuário como fornecedor da mercadoria. Idempotente
+	@PreAuthorize(Perfis.ADMINISTRADOR_GERENTE)
 	@PutMapping("/usuarios/{usuarioId}/mercadorias/{mercadoriaId}")
 	public ResponseEntity<Void> vincularFornecedor(@PathVariable long usuarioId, @PathVariable long mercadoriaId) {
 		Usuario fornecedor = buscarUsuario(usuarioId);
@@ -159,6 +169,7 @@ public class MercadoriaControle {
 		return new ResponseEntity<>(HttpStatus.NO_CONTENT);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR_GERENTE)
 	@DeleteMapping("/usuarios/{usuarioId}/mercadorias/{mercadoriaId}")
 	public ResponseEntity<Void> desvincularFornecedor(@PathVariable long usuarioId, @PathVariable long mercadoriaId) {
 		Usuario fornecedor = buscarUsuario(usuarioId);

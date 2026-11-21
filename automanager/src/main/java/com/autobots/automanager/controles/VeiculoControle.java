@@ -4,6 +4,7 @@ import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import javax.validation.Valid;
 
@@ -18,8 +19,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import com.autobots.automanager.autorizacao.Perfis;
+import com.autobots.automanager.autorizacao.PoliticaAcesso;
 import com.autobots.automanager.entidades.Usuario;
 import com.autobots.automanager.entidades.Veiculo;
 import com.autobots.automanager.modelos.AdicionadorLinkVeiculo;
@@ -38,6 +42,8 @@ public class VeiculoControle {
 	private RepositorioVenda repositorioVenda;
 	@Autowired
 	private AdicionadorLinkVeiculo adicionadorLink;
+	@Autowired
+	private PoliticaAcesso acesso;
 
 	private Veiculo buscar(long id) {
 		return repositorio.findById(id).orElseThrow(
@@ -49,6 +55,7 @@ public class VeiculoControle {
 				() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário " + id + " não encontrado"));
 	}
 
+	@PreAuthorize("@acesso.podeLerVeiculo(#id)")
 	@GetMapping("/veiculos/{id}")
 	public ResponseEntity<Veiculo> obterVeiculo(@PathVariable long id) {
 		Veiculo veiculo = buscar(id);
@@ -56,15 +63,18 @@ public class VeiculoControle {
 		return new ResponseEntity<>(veiculo, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.AUTENTICADO)
 	@GetMapping("/veiculos")
 	public ResponseEntity<CollectionModel<Veiculo>> obterVeiculos() {
-		List<Veiculo> veiculos = repositorio.findAll();
+		// Os veículos seguem a regra de leitura do proprietário
+		List<Veiculo> veiculos = repositorio.findAll().stream().filter(acesso::podeLer).collect(Collectors.toList());
 		adicionadorLink.adicionarLink(veiculos);
 		CollectionModel<Veiculo> colecao = CollectionModel.of(veiculos,
 				linkTo(methodOn(VeiculoControle.class).obterVeiculos()).withSelfRel());
 		return new ResponseEntity<>(colecao, HttpStatus.OK);
 	}
 
+	@PreAuthorize("@acesso.podeLerUsuario(#usuarioId)")
 	@GetMapping("/usuarios/{usuarioId}/veiculos")
 	public ResponseEntity<CollectionModel<Veiculo>> obterVeiculosDoUsuario(@PathVariable long usuarioId) {
 		Usuario usuario = buscarUsuario(usuarioId);
@@ -76,6 +86,7 @@ public class VeiculoControle {
 	}
 
 	// O veículo é cadastrado sob o seu proprietário
+	@PreAuthorize("@acesso.podeGerenciarUsuario(#usuarioId)")
 	@PostMapping("/usuarios/{usuarioId}/veiculos")
 	public ResponseEntity<Veiculo> cadastrarVeiculo(@PathVariable long usuarioId, @Valid @RequestBody Veiculo veiculo) {
 		if (veiculo.getId() != null) {
@@ -90,6 +101,7 @@ public class VeiculoControle {
 	}
 
 	// Tipo, modelo e placa. O proprietário não muda pelo PUT, já que as vendas do veículo são dele
+	@PreAuthorize("@acesso.podeGerenciarVeiculo(#id)")
 	@PutMapping("/veiculos/{id}")
 	public ResponseEntity<Veiculo> atualizarVeiculo(@PathVariable long id, @RequestBody Veiculo atualizacao) {
 		Veiculo veiculo = buscar(id);
@@ -99,6 +111,7 @@ public class VeiculoControle {
 		return new ResponseEntity<>(salvo, HttpStatus.OK);
 	}
 
+	@PreAuthorize("@acesso.podeGerenciarVeiculo(#id)")
 	@DeleteMapping("/veiculos/{id}")
 	public ResponseEntity<Void> excluirVeiculo(@PathVariable long id) {
 		Veiculo veiculo = buscar(id);

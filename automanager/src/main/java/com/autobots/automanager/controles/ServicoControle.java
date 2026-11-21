@@ -19,8 +19,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import com.autobots.automanager.autorizacao.Perfis;
 import com.autobots.automanager.entidades.Empresa;
 import com.autobots.automanager.entidades.Servico;
 import com.autobots.automanager.modelos.AdicionadorLinkServico;
@@ -50,6 +52,7 @@ public class ServicoControle {
 				() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa " + id + " não encontrada"));
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/servicos/{id}")
 	public ResponseEntity<Servico> obterServico(@PathVariable long id) {
 		Servico servico = buscar(id);
@@ -57,6 +60,7 @@ public class ServicoControle {
 		return new ResponseEntity<>(servico, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/servicos")
 	public ResponseEntity<CollectionModel<Servico>> obterServicos() {
 		List<Servico> servicos = repositorio.findAll();
@@ -66,6 +70,7 @@ public class ServicoControle {
 		return new ResponseEntity<>(colecao, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/empresas/{empresaId}/servicos")
 	public ResponseEntity<CollectionModel<Servico>> obterServicosDaEmpresa(@PathVariable long empresaId) {
 		Empresa empresa = buscarEmpresa(empresaId);
@@ -77,6 +82,7 @@ public class ServicoControle {
 	}
 
 	// Entra no catálogo da empresa
+	@PreAuthorize(Perfis.ADMINISTRADOR_GERENTE)
 	@PostMapping("/empresas/{empresaId}/servicos")
 	public ResponseEntity<Servico> cadastrarServico(@PathVariable long empresaId, @Valid @RequestBody Servico servico) {
 		if (servico.getId() != null) {
@@ -90,6 +96,7 @@ public class ServicoControle {
 		return ResponseEntity.created(salvo.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(salvo);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR_GERENTE)
 	@PutMapping("/servicos/{id}")
 	public ResponseEntity<Servico> atualizarServico(@PathVariable long id, @RequestBody Servico atualizacao) {
 		Servico servico = buscar(id);
@@ -99,6 +106,7 @@ public class ServicoControle {
 		return new ResponseEntity<>(salvo, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR_GERENTE)
 	@DeleteMapping("/servicos/{id}")
 	public ResponseEntity<Void> excluirServico(@PathVariable long id) {
 		Servico servico = buscar(id);

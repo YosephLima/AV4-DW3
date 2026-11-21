@@ -19,8 +19,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import com.autobots.automanager.autorizacao.Perfis;
 import com.autobots.automanager.entidades.Empresa;
 import com.autobots.automanager.entidades.Endereco;
 import com.autobots.automanager.entidades.Usuario;
@@ -56,6 +58,7 @@ public class EnderecoControle {
 		}
 	}
 
+	@PreAuthorize("@acesso.podeLerEndereco(#id)")
 	@GetMapping("/enderecos/{id}")
 	public ResponseEntity<Endereco> obterEndereco(@PathVariable long id) {
 		Endereco endereco = buscar(id);
@@ -63,6 +66,7 @@ public class EnderecoControle {
 		return new ResponseEntity<>(endereco, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR)
 	@GetMapping("/enderecos")
 	public ResponseEntity<CollectionModel<Endereco>> obterEnderecos() {
 		List<Endereco> enderecos = repositorio.findAll();
@@ -73,6 +77,7 @@ public class EnderecoControle {
 	}
 
 	// Rota no singular porque usuário e empresa têm no máximo um endereço
+	@PreAuthorize("@acesso.podeGerenciarUsuario(#usuarioId)")
 	@PostMapping("/usuarios/{usuarioId}/endereco")
 	public ResponseEntity<Endereco> cadastrarEnderecoUsuario(@PathVariable long usuarioId, @Valid @RequestBody Endereco endereco) {
 		Usuario usuario = repositorioUsuario.findById(usuarioId).orElseThrow(
@@ -85,6 +90,7 @@ public class EnderecoControle {
 		return ResponseEntity.created(salvo.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(salvo);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR)
 	@PostMapping("/empresas/{empresaId}/endereco")
 	public ResponseEntity<Endereco> cadastrarEnderecoEmpresa(@PathVariable long empresaId, @Valid @RequestBody Endereco endereco) {
 		Empresa empresa = repositorioEmpresa.findById(empresaId).orElseThrow(
@@ -97,6 +103,7 @@ public class EnderecoControle {
 		return ResponseEntity.created(salvo.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(salvo);
 	}
 
+	@PreAuthorize("@acesso.podeGerenciarEndereco(#id)")
 	@PutMapping("/enderecos/{id}")
 	public ResponseEntity<Endereco> atualizarEndereco(@PathVariable long id, @RequestBody Endereco atualizacao) {
 		Endereco endereco = buscar(id);
@@ -106,6 +113,7 @@ public class EnderecoControle {
 		return new ResponseEntity<>(salvo, HttpStatus.OK);
 	}
 
+	@PreAuthorize("@acesso.podeGerenciarEndereco(#id)")
 	@DeleteMapping("/enderecos/{id}")
 	public ResponseEntity<Void> excluirEndereco(@PathVariable long id) {
 		Endereco endereco = buscar(id);

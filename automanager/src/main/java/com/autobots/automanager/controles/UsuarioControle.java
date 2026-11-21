@@ -6,6 +6,7 @@ import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import javax.validation.Valid;
 
@@ -14,16 +15,21 @@ import org.springframework.hateoas.CollectionModel;
 import org.springframework.hateoas.IanaLinkRelations;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.autobots.automanager.autorizacao.Perfis;
+import com.autobots.automanager.autorizacao.PoliticaAcesso;
 import com.autobots.automanager.entidades.Credencial;
+import com.autobots.automanager.entidades.CredencialUsuarioSenha;
 import com.autobots.automanager.entidades.Empresa;
 import com.autobots.automanager.entidades.Usuario;
 import com.autobots.automanager.modelos.AdicionadorLinkUsuario;
@@ -42,6 +48,10 @@ public class UsuarioControle {
 	private RepositorioVenda repositorioVenda;
 	@Autowired
 	private AdicionadorLinkUsuario adicionadorLink;
+	@Autowired
+	private PoliticaAcesso acesso;
+	@Autowired
+	private PasswordEncoder codificador;
 
 	private Usuario buscar(long id) {
 		return repositorio.findById(id).orElseThrow(
@@ -53,6 +63,7 @@ public class UsuarioControle {
 				() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa " + id + " não encontrada"));
 	}
 
+	@PreAuthorize("@acesso.podeLerUsuario(#id)")
 	@GetMapping("/usuarios/{id}")
 	public ResponseEntity<Usuario> obterUsuario(@PathVariable long id) {
 		Usuario usuario = buscar(id);
@@ -60,20 +71,24 @@ public class UsuarioControle {
 		return new ResponseEntity<>(usuario, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.AUTENTICADO)
 	@GetMapping("/usuarios")
 	public ResponseEntity<CollectionModel<Usuario>> obterUsuarios() {
-		List<Usuario> usuarios = repositorio.findAll();
+		// Cada perfil só vê os usuários que pode ler (o cliente, só a si mesmo)
+		List<Usuario> usuarios = repositorio.findAll().stream().filter(acesso::podeLer).collect(Collectors.toList());
 		adicionadorLink.adicionarLink(usuarios);
 		CollectionModel<Usuario> colecao = CollectionModel.of(usuarios,
 				linkTo(methodOn(UsuarioControle.class).obterUsuarios()).withSelfRel());
 		return new ResponseEntity<>(colecao, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/empresas/{empresaId}/usuarios")
 	public ResponseEntity<CollectionModel<Usuario>> obterUsuariosDaEmpresa(@PathVariable long empresaId) {
 		Empresa empresa = buscarEmpresa(empresaId);
-		adicionadorLink.adicionarLink(empresa.getUsuarios());
-		CollectionModel<Usuario> colecao = CollectionModel.of(empresa.getUsuarios(),
+		List<Usuario> usuarios = empresa.getUsuarios().stream().filter(acesso::podeLer).collect(Collectors.toList());
+		adicionadorLink.adicionarLink(usuarios);
+		CollectionModel<Usuario> colecao = CollectionModel.of(usuarios,
 				linkTo(methodOn(UsuarioControle.class).obterUsuariosDaEmpresa(empresaId)).withSelfRel(),
 				linkTo(methodOn(EmpresaControle.class).obterEmpresa(empresaId)).withRel(IanaLinkRelations.UP));
 		return new ResponseEntity<>(colecao, HttpStatus.OK);
@@ -81,6 +96,7 @@ public class UsuarioControle {
 
 	// O usuário é cadastrado já vinculado à empresa, com telefones, documentos, emails,
 	// credenciais e endereço no mesmo corpo, se quiser
+	@PreAuthorize(Perfis.FUNCIONARIOS + " and @acesso.podeAtribuirPerfis(#usuario.perfis)")
 	@PostMapping("/empresas/{empresaId}/usuarios")
 	public ResponseEntity<Usuario> cadastrarUsuario(@PathVariable long empresaId, @Valid @RequestBody Usuario usuario) {
 		if (usuario.getId() != null) {
@@ -89,6 +105,10 @@ public class UsuarioControle {
 		Empresa empresa = buscarEmpresa(empresaId);
 		for (Credencial credencial : usuario.getCredenciais()) {
 			credencial.setCriacao(new Date());
+			if (credencial instanceof CredencialUsuarioSenha) {
+				CredencialUsuarioSenha usuarioSenha = (CredencialUsuarioSenha) credencial;
+				usuarioSenha.setSenha(codificador.encode(usuarioSenha.getSenha()));
+			}
 		}
 		Usuario salvo = repositorio.save(usuario);
 		empresa.getUsuarios().add(salvo);
@@ -98,6 +118,7 @@ public class UsuarioControle {
 	}
 
 	// Vincula um usuário existente à empresa. Idempotente: repetir não muda nada
+	@PreAuthorize(Perfis.FUNCIONARIOS + " and @acesso.podeGerenciarUsuario(#usuarioId)")
 	@PutMapping("/empresas/{empresaId}/usuarios/{usuarioId}")
 	public ResponseEntity<Void> vincularUsuario(@PathVariable long empresaId, @PathVariable long usuarioId) {
 		Empresa empresa = buscarEmpresa(empresaId);
@@ -114,6 +135,7 @@ public class UsuarioControle {
 		return new ResponseEntity<>(HttpStatus.NO_CONTENT);
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS + " and @acesso.podeGerenciarUsuario(#usuarioId)")
 	@DeleteMapping("/empresas/{empresaId}/usuarios/{usuarioId}")
 	public ResponseEntity<Void> desvincularUsuario(@PathVariable long empresaId, @PathVariable long usuarioId) {
 		Empresa empresa = buscarEmpresa(empresaId);
@@ -126,6 +148,7 @@ public class UsuarioControle {
 		return new ResponseEntity<>(HttpStatus.NO_CONTENT);
 	}
 
+	@PreAuthorize("@acesso.podeAlterarUsuario(#id, #atualizacao)")
 	@PutMapping("/usuarios/{id}")
 	public ResponseEntity<Usuario> atualizarUsuario(@PathVariable long id, @RequestBody Usuario atualizacao) {
 		Usuario usuario = buscar(id);
@@ -135,6 +158,7 @@ public class UsuarioControle {
 		return new ResponseEntity<>(salvo, HttpStatus.OK);
 	}
 
+	@PreAuthorize("@acesso.podeGerenciarUsuario(#id)")
 	@DeleteMapping("/usuarios/{id}")
 	public ResponseEntity<Void> excluirUsuario(@PathVariable long id) {
 		Usuario usuario = buscar(id);

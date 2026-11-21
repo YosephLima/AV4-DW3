@@ -19,8 +19,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import com.autobots.automanager.autorizacao.Perfis;
 import com.autobots.automanager.entidades.Documento;
 import com.autobots.automanager.entidades.Usuario;
 import com.autobots.automanager.modelos.AdicionadorLinkDocumento;
@@ -42,6 +44,7 @@ public class DocumentoControle {
 				() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Documento " + id + " não encontrado"));
 	}
 
+	@PreAuthorize("@acesso.podeLerDocumento(#id)")
 	@GetMapping("/documentos/{id}")
 	public ResponseEntity<Documento> obterDocumento(@PathVariable long id) {
 		Documento documento = buscar(id);
@@ -49,6 +52,7 @@ public class DocumentoControle {
 		return new ResponseEntity<>(documento, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR)
 	@GetMapping("/documentos")
 	public ResponseEntity<CollectionModel<Documento>> obterDocumentos() {
 		List<Documento> documentos = repositorio.findAll();
@@ -59,6 +63,7 @@ public class DocumentoControle {
 	}
 
 	// A criação fica aninhada no dono porque Documento só existe vinculado a ele
+	@PreAuthorize("@acesso.podeGerenciarUsuario(#usuarioId)")
 	@PostMapping("/usuarios/{usuarioId}/documentos")
 	public ResponseEntity<Documento> cadastrarDocumento(@PathVariable long usuarioId, @Valid @RequestBody Documento documento) {
 		if (documento.getId() != null) {
@@ -73,6 +78,7 @@ public class DocumentoControle {
 		return ResponseEntity.created(salvo.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(salvo);
 	}
 
+	@PreAuthorize("@acesso.podeGerenciarDocumento(#id)")
 	@PutMapping("/documentos/{id}")
 	public ResponseEntity<Documento> atualizarDocumento(@PathVariable long id, @RequestBody Documento atualizacao) {
 		Documento documento = buscar(id);
@@ -82,6 +88,7 @@ public class DocumentoControle {
 		return new ResponseEntity<>(salvo, HttpStatus.OK);
 	}
 
+	@PreAuthorize("@acesso.podeGerenciarDocumento(#id)")
 	@DeleteMapping("/documentos/{id}")
 	public ResponseEntity<Void> excluirDocumento(@PathVariable long id) {
 		Documento documento = buscar(id);

@@ -3,9 +3,12 @@ package com.autobots.automanager.controles;
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
 
+import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.hateoas.CollectionModel;
@@ -18,11 +21,14 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.HashSet;
 import java.util.Set;
 
+import com.autobots.automanager.autorizacao.Perfis;
+import com.autobots.automanager.autorizacao.PoliticaAcesso;
 import com.autobots.automanager.entidades.Empresa;
 import com.autobots.automanager.entidades.Mercadoria;
 import com.autobots.automanager.entidades.Servico;
@@ -50,6 +56,8 @@ public class VendaControle {
 	private RepositorioVeiculo repositorioVeiculo;
 	@Autowired
 	private AdicionadorLinkVenda adicionadorLink;
+	@Autowired
+	private PoliticaAcesso acesso;
 
 	private Venda buscar(long id) {
 		return repositorio.findById(id).orElseThrow(
@@ -65,14 +73,19 @@ public class VendaControle {
 		return new ResponseStatusException(HttpStatus.BAD_REQUEST, mensagem);
 	}
 
-	// Usuário da própria empresa e com o perfil exigido para o papel na venda
-	private Usuario participante(Empresa empresa, Long id, PerfilUsuario perfil, String papel) {
+	// Usuário da própria empresa e com um perfil que permite o papel na venda
+	private Usuario participante(Empresa empresa, Long id, Predicate<PerfilUsuario> perfilAceito, String perfis,
+			String papel) {
 		Usuario usuario = empresa.getUsuarios().stream().filter(u -> u.getId().equals(id)).findFirst()
 				.orElseThrow(() -> invalida("O " + papel + " " + id + " não é um usuário da empresa " + empresa.getId()));
-		if (!usuario.getPerfis().contains(perfil)) {
-			throw invalida("O usuário " + id + " não tem o perfil " + perfil + " para ser o " + papel + " da venda");
+		if (usuario.getPerfis().stream().noneMatch(perfilAceito)) {
+			throw invalida("O usuário " + id + " precisa do perfil " + perfis + " para ser o " + papel + " da venda");
 		}
 		return usuario;
+	}
+
+	private List<Venda> legiveis(Collection<Venda> vendas) {
+		return vendas.stream().filter(acesso::podeLer).collect(Collectors.toList());
 	}
 
 	/**
@@ -84,10 +97,12 @@ public class VendaControle {
 			venda.setIdentificacao(dados.getIdentificacao());
 		}
 		if (dados.getClienteId() != null) {
-			venda.setCliente(participante(empresa, dados.getClienteId(), PerfilUsuario.CLIENTE, "cliente"));
+			venda.setCliente(participante(empresa, dados.getClienteId(), perfil -> perfil == PerfilUsuario.CLIENTE,
+					"CLIENTE", "cliente"));
 		}
 		if (dados.getFuncionarioId() != null) {
-			venda.setFuncionario(participante(empresa, dados.getFuncionarioId(), PerfilUsuario.FUNCIONARIO, "funcionário"));
+			venda.setFuncionario(participante(empresa, dados.getFuncionarioId(), PerfilUsuario::ehFuncionario,
+					"VENDEDOR, GERENTE ou ADMINISTRADOR", "funcionário"));
 		}
 		if (dados.getVeiculoId() != null) {
 			Veiculo veiculo = repositorioVeiculo.findById(dados.getVeiculoId())
@@ -124,6 +139,7 @@ public class VendaControle {
 		}
 	}
 
+	@PreAuthorize("@acesso.podeLerVenda(#id)")
 	@GetMapping("/vendas/{id}")
 	public ResponseEntity<Venda> obterVenda(@PathVariable long id) {
 		Venda venda = buscar(id);
@@ -131,32 +147,37 @@ public class VendaControle {
 		return new ResponseEntity<>(venda, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.AUTENTICADO)
 	@GetMapping("/vendas")
 	public ResponseEntity<CollectionModel<Venda>> obterVendas() {
-		List<Venda> vendas = repositorio.findAll();
+		// Administrador e gerente veem todas; vendedor, as que fez; cliente, as que comprou
+		List<Venda> vendas = legiveis(repositorio.findAll());
 		adicionadorLink.adicionarLink(vendas);
 		CollectionModel<Venda> colecao = CollectionModel.of(vendas,
 				linkTo(methodOn(VendaControle.class).obterVendas()).withSelfRel());
 		return new ResponseEntity<>(colecao, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS)
 	@GetMapping("/empresas/{empresaId}/vendas")
 	public ResponseEntity<CollectionModel<Venda>> obterVendasDaEmpresa(@PathVariable long empresaId) {
 		Empresa empresa = buscarEmpresa(empresaId);
-		adicionadorLink.adicionarLink(empresa.getVendas());
-		CollectionModel<Venda> colecao = CollectionModel.of(empresa.getVendas(),
+		List<Venda> vendas = legiveis(empresa.getVendas());
+		adicionadorLink.adicionarLink(vendas);
+		CollectionModel<Venda> colecao = CollectionModel.of(vendas,
 				linkTo(methodOn(VendaControle.class).obterVendasDaEmpresa(empresaId)).withSelfRel(),
 				linkTo(methodOn(EmpresaControle.class).obterEmpresa(empresaId)).withRel(IanaLinkRelations.UP));
 		return new ResponseEntity<>(colecao, HttpStatus.OK);
 	}
 
 	// Vendas em que o usuário é cliente ou funcionário
+	@PreAuthorize("@acesso.podeLerUsuario(#usuarioId)")
 	@GetMapping("/usuarios/{usuarioId}/vendas")
 	public ResponseEntity<CollectionModel<Venda>> obterVendasDoUsuario(@PathVariable long usuarioId) {
 		if (!repositorioUsuario.existsById(usuarioId)) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário " + usuarioId + " não encontrado");
 		}
-		List<Venda> vendas = repositorio.findByClienteIdOrFuncionarioId(usuarioId, usuarioId);
+		List<Venda> vendas = legiveis(repositorio.findByClienteIdOrFuncionarioId(usuarioId, usuarioId));
 		adicionadorLink.adicionarLink(vendas);
 		CollectionModel<Venda> colecao = CollectionModel.of(vendas,
 				linkTo(methodOn(VendaControle.class).obterVendasDoUsuario(usuarioId)).withSelfRel(),
@@ -164,17 +185,20 @@ public class VendaControle {
 		return new ResponseEntity<>(colecao, HttpStatus.OK);
 	}
 
+	@PreAuthorize("@acesso.podeLerVeiculo(#veiculoId)")
 	@GetMapping("/veiculos/{veiculoId}/vendas")
 	public ResponseEntity<CollectionModel<Venda>> obterVendasDoVeiculo(@PathVariable long veiculoId) {
 		Veiculo veiculo = repositorioVeiculo.findById(veiculoId).orElseThrow(
 				() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Veículo " + veiculoId + " não encontrado"));
-		adicionadorLink.adicionarLink(veiculo.getVendas());
-		CollectionModel<Venda> colecao = CollectionModel.of(veiculo.getVendas(),
+		List<Venda> vendas = legiveis(veiculo.getVendas());
+		adicionadorLink.adicionarLink(vendas);
+		CollectionModel<Venda> colecao = CollectionModel.of(vendas,
 				linkTo(methodOn(VendaControle.class).obterVendasDoVeiculo(veiculoId)).withSelfRel(),
 				linkTo(methodOn(VeiculoControle.class).obterVeiculo(veiculoId)).withRel(IanaLinkRelations.UP));
 		return new ResponseEntity<>(colecao, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.FUNCIONARIOS + " and @acesso.podeCadastrarVenda(#dados)")
 	@PostMapping("/empresas/{empresaId}/vendas")
 	public ResponseEntity<Venda> cadastrarVenda(@PathVariable long empresaId, @RequestBody CadastroVenda dados) {
 		Empresa empresa = buscarEmpresa(empresaId);
@@ -191,6 +215,7 @@ public class VendaControle {
 		return ResponseEntity.created(salva.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(salva);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR_GERENTE)
 	@PutMapping("/vendas/{id}")
 	public ResponseEntity<Venda> atualizarVenda(@PathVariable long id, @RequestBody CadastroVenda dados) {
 		Venda venda = buscar(id);
@@ -202,6 +227,7 @@ public class VendaControle {
 		return new ResponseEntity<>(salva, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR_GERENTE)
 	@DeleteMapping("/vendas/{id}")
 	public ResponseEntity<Void> excluirVenda(@PathVariable long id) {
 		Venda venda = buscar(id);

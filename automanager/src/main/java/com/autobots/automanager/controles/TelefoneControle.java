@@ -19,8 +19,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import com.autobots.automanager.autorizacao.Perfis;
 import com.autobots.automanager.entidades.Empresa;
 import com.autobots.automanager.entidades.Telefone;
 import com.autobots.automanager.entidades.Usuario;
@@ -46,6 +48,7 @@ public class TelefoneControle {
 				() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Telefone " + id + " não encontrado"));
 	}
 
+	@PreAuthorize("@acesso.podeLerTelefone(#id)")
 	@GetMapping("/telefones/{id}")
 	public ResponseEntity<Telefone> obterTelefone(@PathVariable long id) {
 		Telefone telefone = buscar(id);
@@ -53,6 +56,7 @@ public class TelefoneControle {
 		return new ResponseEntity<>(telefone, HttpStatus.OK);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR)
 	@GetMapping("/telefones")
 	public ResponseEntity<CollectionModel<Telefone>> obterTelefones() {
 		List<Telefone> telefones = repositorio.findAll();
@@ -63,6 +67,7 @@ public class TelefoneControle {
 	}
 
 	// A criação fica aninhada no dono porque Telefone só existe vinculado a ele
+	@PreAuthorize("@acesso.podeGerenciarUsuario(#usuarioId)")
 	@PostMapping("/usuarios/{usuarioId}/telefones")
 	public ResponseEntity<Telefone> cadastrarTelefoneUsuario(@PathVariable long usuarioId, @Valid @RequestBody Telefone telefone) {
 		if (telefone.getId() != null) {
@@ -77,6 +82,7 @@ public class TelefoneControle {
 		return ResponseEntity.created(salvo.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(salvo);
 	}
 
+	@PreAuthorize(Perfis.ADMINISTRADOR)
 	@PostMapping("/empresas/{empresaId}/telefones")
 	public ResponseEntity<Telefone> cadastrarTelefoneEmpresa(@PathVariable long empresaId, @Valid @RequestBody Telefone telefone) {
 		if (telefone.getId() != null) {
@@ -91,6 +97,7 @@ public class TelefoneControle {
 		return ResponseEntity.created(salvo.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(salvo);
 	}
 
+	@PreAuthorize("@acesso.podeGerenciarTelefone(#id)")
 	@PutMapping("/telefones/{id}")
 	public ResponseEntity<Telefone> atualizarTelefone(@PathVariable long id, @RequestBody Telefone atualizacao) {
 		Telefone telefone = buscar(id);
@@ -100,6 +107,7 @@ public class TelefoneControle {
 		return new ResponseEntity<>(salvo, HttpStatus.OK);
 	}
 
+	@PreAuthorize("@acesso.podeGerenciarTelefone(#id)")
 	@DeleteMapping("/telefones/{id}")
 	public ResponseEntity<Void> excluirTelefone(@PathVariable long id) {
 		Telefone telefone = buscar(id);
